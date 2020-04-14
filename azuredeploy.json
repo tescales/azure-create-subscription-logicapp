@@ -1,0 +1,558 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "LogicAppName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "defaultValue": "createAzureSubscription",
+            "metadata": {
+                "description": "The resource name to use for the logic app"
+            }
+        },
+        "LogicAppLocation": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "The resource location to use for the logic app"
+            }
+        },
+        "devTestMgmtGroupId": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "dev-test",
+            "metadata": {
+                "description": "The Management Group ID for Dev/Test Subscriptions."
+            }
+        },
+        "sandboxMgmtGroupId": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "sandbox",
+            "metadata": {
+                "description": "The Management Group ID for Sandbox Subscriptions."
+            }
+        },
+        "accountOwnerUser": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "owner",
+            "metadata": {
+                "description": "The name of the Account Owner."
+            }
+        },
+        "accountOwnerPass": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "password",
+            "metadata": {
+                "description": "The password for the Account Owner."
+            }
+        },
+        "enrollmentId": {
+            "type": "securestring",
+            "minLength": 1,
+            "defaultValue": "[subscription().tenantid]",
+            "metadata": {
+                "description": "The Azure Active Directory tenantid for the Account Owner."
+            }
+        },
+        "msftFormsId": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "v4j5cvGGr0GRqy180BHbR4aeDQG97hFLj5ejc5p3JO1URjRXVTFPRldFV01PNEVBWEZWMjc1VU1QNC4u",
+            "metadata": {
+                "description": "The ID of the Microsoft Form. Available in the URL of your Forms account."
+            }
+        },
+        "teamsRecipient": {
+            "type": "string",
+            "minLength": 1,
+            "metadata": {
+                "description": "The Email address to notify in Teams upon failure."
+            }
+        }
+    },
+    "variables": {
+        "msftFormsConnectionName": "[concat(parameters('LogicAppName'), '-msftforms')]",
+        "msftTeamsConnectionName": "[concat(parameters('LogicAppName'), '-msftteams')]"
+    },
+    "resources": [
+        {
+            "name": "[parameters('LogicAppName')]",
+            "type": "Microsoft.Logic/workflows",
+            "location": "[parameters('LogicAppLocation')]",
+            "tags": {
+                "displayName": "LogicApp"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/connections', variables('msftFormsConnectionName'))]",
+                "[resourceId('Microsoft.Web/connections', variables('msftTeamsConnectionName'))]"
+            ],
+            "apiVersion": "2016-06-01",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "actions": {
+                        "Get_Access_Token": {
+                            "inputs": {
+                                "body": "grant_type=client_credentials&client_id=@{parameters('accountOwnerUser')}&client_secret=@{parameters('accountOwnerPass')}&resource=https://management.azure.com/",
+                                "headers": {
+                                    "Content-Type": "application/x-www-form-urlencoded"
+                                },
+                                "method": "POST",
+                                "uri": "https://login.microsoftonline.com/@{parameters('tenantId')}/oauth2/token"
+                            },
+                            "runAfter": {
+                                "Initialize_variable": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Http"
+                        },
+                        "Get_response_details": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['formsConnection']['connectionId']"
+                                    }
+                                },
+                                "method": "get",
+                                "path": "/formapi/api/forms/@{encodeURIComponent('v4j5cvGGr0GRqy180BHbR4aeDQG97hFLj5ejc5p3JO1URjRXVTFPRldFV01PNEVBWEZWMjc1VU1QNC4u')}/responses",
+                                "queries": {
+                                    "response_id": "@triggerBody()?['resourceData']?['responseId']"
+                                }
+                            },
+                            "runAfter": {
+                            }
+                        },
+                        "Initialize_variable": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "strSubscriptionName",
+                                        "type": "string"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Project_Cost_Code": [
+                                    "Succeeded"
+                                ],
+                                "isSandbox": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Parse_AAD_Response": {
+                            "inputs": {
+                                "content": "@body('Get_Access_Token')",
+                                "schema": {
+                                    "properties": {
+                                        "access_token": {
+                                            "type": "string"
+                                        },
+                                        "expires_in": {
+                                            "type": "string"
+                                        },
+                                        "expires_on": {
+                                            "type": "string"
+                                        },
+                                        "ext_expires_in": {
+                                            "type": "string"
+                                        },
+                                        "not_before": {
+                                            "type": "string"
+                                        },
+                                        "resource": {
+                                            "type": "string"
+                                        },
+                                        "token_type": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            },
+                            "runAfter": {
+                                "Get_Access_Token": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ParseJson"
+                        },
+                        "Post_a_message_as_the_Flow_bot_to_a_user": {
+                            "inputs": {
+                                "body": {
+                                    "messageBody": "@{result('checkMGAccess')}",
+                                    "messageTitle": "ERROR in Logic App",
+                                    "recipient": {
+                                        "to": "@parameters('teamsRecipient')"
+                                    }
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['teamsConnection']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/flowbot/actions/notification/recipienttypes/user"
+                            },
+                            "runAfter": {
+                                "checkMGAccess": [
+                                    "Failed"
+                                ]
+                            },
+                            "type": "ApiConnection"
+                        },
+                        "Project_Cost_Code": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "strProjectCostCode",
+                                        "type": "string",
+                                        "value": "@body('Get_response_details')?['r658d0ad316ba4c9394ba67f8bd230085']"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Project_Name": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Project_Name": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "strProjectName",
+                                        "type": "string",
+                                        "value": "@body('Get_response_details')?['rfab5c0c7e370479ea1fe27313a7f8165']"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Project_Sponsor": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Project_Short_Code": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "strProjectShortCode",
+                                        "type": "string",
+                                        "value": "@{trim(replace(replace(replace(replace(toLower(body('Get_response_details')?['r4bca98a77f294df68e11a1f24e830b81']),'/','-'),'\"',''),'[',''),']',''))}"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Tech_Lead": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Project_Sponsor": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "strProjectSponsor",
+                                        "type": "string",
+                                        "value": "@body('Get_response_details')?['r5d10bbb532334bd7a4f943b4f26a63a7']"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Get_response_details": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Set_Auth_Token": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "strAuthToken",
+                                        "type": "string",
+                                        "value": "@body('Parse_AAD_Response')?['access_token']"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Parse_AAD_Response": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Tech_Lead": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "strTechLead",
+                                        "type": "string",
+                                        "value": "@body('Get_response_details')?['ra76e425297af439e840c086af7e6b817']"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Get_response_details": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "checkMGAccess": {
+                            "actions": {
+                                "Get_Sandbox_MG": {
+                                    "inputs": {
+                                        "authentication": {
+                                            "type": "Raw",
+                                            "value": "Bearer @{variables('strAuthToken')}"
+                                        },
+                                        "method": "GET",
+                                        "uri": "https://management.azure.com/providers/Microsoft.Management/managementGroups/@{parameters('Sandbox Management Group ID')}?api-version=2020-02-01"
+                                    },
+                                    "runAfter": {
+                                    },
+                                    "type": "Http"
+                                },
+                                "HTTP": {
+                                    "inputs": {
+                                        "authentication": {
+                                            "type": "Raw",
+                                            "value": "Bearer @{variables('strAuthToken')}"
+                                        },
+                                        "method": "GET",
+                                        "uri": "https://management.azure.com/providers/Microsoft.Management/managementGroups/@{parameters('DevTest Management Group ID')}?api-version=2020-02-01"
+                                    },
+                                    "runAfter": {
+                                    },
+                                    "type": "Http"
+                                }
+                            },
+                            "runAfter": {
+                                "Set_Auth_Token": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Scope"
+                        },
+                        "isDevTestRequest": {
+                            "actions": {
+                                "Move_Subscription_to_DevTest_MG": {
+                                    "inputs": {
+                                        "authentication": {
+                                            "type": "Raw",
+                                            "value": "Bearer @{variables('strAuthToken')}"
+                                        },
+                                        "method": "PUT",
+                                        "uri": "https://management.azure.com/providers/Microsoft.Management/managementGroups/@{parameters('DevTest Management Group ID')}/subscriptions/@{parameters('enrollmentId')}?api-version=2020-02-01"
+                                    },
+                                    "runAfter": {
+                                        "Subscription_Name-_Project": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Http"
+                                },
+                                "Subscription_Name-_Project": {
+                                    "inputs": {
+                                        "name": "strSubscriptionName",
+                                        "value": "@{concat('sbox-',first(split(variables('strTechLead'),'@')),'-',formatDateTime(utcNow(),'yyyy-MM'))}"
+                                    },
+                                    "runAfter": {
+                                    },
+                                    "type": "SetVariable"
+                                }
+                            },
+                            "else": {
+                                "actions": {
+                                    "Move_Subscription_to_Sandbox_MG": {
+                                        "inputs": {
+                                            "method": "PUT",
+                                            "uri": "https://management.azure.com/providers/Microsoft.Management/managementGroups/@{parameters('Sandbox Management Group ID')}/subscriptions/@{parameters('enrollmentId')}?api-version=2020-02-01"
+                                        },
+                                        "runAfter": {
+                                            "Subscription_Name-_Sandbox": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "Http"
+                                    },
+                                    "Subscription_Name-_Sandbox": {
+                                        "inputs": {
+                                            "name": "strSubscriptionName",
+                                            "value": "@{concat('dev-',variables('strProjectShortCode'),'-',formatDateTime(utcNow(),'yyyy-MM'))}"
+                                        },
+                                        "runAfter": {
+                                        },
+                                        "type": "SetVariable"
+                                    }
+                                }
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "equals": [
+                                            "@variables('boolSandboxSubscription')",
+                                            "@bool('true')"
+                                        ]
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "checkMGAccess": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "isSandbox": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "boolSandboxSubscription",
+                                        "type": "boolean",
+                                        "value": "@startsWith(body('Get_response_details')?['rf463fb922099478cbb9a5dcbb6663018'],'Sandbox')"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Project_Short_Code": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        }
+                    },
+                    "contentVersion": "1.0.0.0",
+                    "outputs": {
+                    },
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {
+                            },
+                            "type": "Object"
+                        },
+                        "DevTest Management Group ID": {
+                            "defaultValue": "[parameters('devTestMgmtGroupId')]",
+                            "type": "String"
+                        },
+                        "Sandbox Management Group ID": {
+                            "defaultValue": "[parameters('sandboxMgmtGroupId')]",
+                            "type": "String"
+                        },
+                        "accountOwnerUser": {
+                            "defaultValue": "[parameters('accountOwnerUser')]",
+                            "type": "SecureString"
+                        },
+                        "accountOwnerPass": {
+                            "defaultValue": "[parameters('accountOwnerPass')]",
+                            "type": "SecureString"
+                        },
+                        "enrollmentId": {
+                            "defaultValue": "[parameters('enrollmentId')]",
+                            "type": "SecureString"
+                        },
+                        "tenantId": {
+                            "defaultValue": "[subscription().tenantId]",
+                            "type": "String"
+                        },
+                        "msftFormsId": {
+                            "defaultValue": "[parameters('msftFormsId')]",
+                            "type": "String"
+                        },
+                        "teamsRecipient": {
+                            "defaultValue": "[parameters('teamsRecipient')]",
+                            "type": "String"
+                        }
+                    },
+                    "triggers": {
+                        "When_a_new_response_is_submitted": {
+                            "inputs": {
+                                "body": {
+                                    "eventType": "responseAdded",
+                                    "notificationUrl": "@{listCallbackUrl()}",
+                                    "source": "ms-connector"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['formsConnection']['connectionId']"
+                                    }
+                                },
+                                "path": "/formapi/api/forms/@{encodeURIComponent('v4j5cvGGr0GRqy180BHbR4aeDQG97hFLj5ejc5p3JO1URjRXVTFPRldFV01PNEVBWEZWMjc1VU1QNC4u')}/webhooks"
+                            },
+                            "splitOn": "@triggerBody()?['value']",
+                            "type": "ApiConnectionWebhook"
+                        }
+                    }
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "formsConnection": {
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('LogicAppLocation'), '/managedApis/microsoftforms')]",
+                                "connectionId": "[resourceId('Microsoft.Web/connections', variables('msftFormsConnectionName'))]"
+                            },
+                            "teamsConnection": {
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('LogicAppLocation'), '/managedApis/teams')]",
+                                "connectionId": "[resourceId('Microsoft.Web/connections', variables('msftTeamsConnectionName'))]"
+                            }
+                        }
+                    }
+                },
+                "accessControl": {
+                }
+            }
+        },
+        // Microsoft Managed API connections
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2018-07-01-preview",
+            // Template parameter reference for connection name
+            "name": "[variables('msftFormsConnectionName')]",
+            // Template parameter reference for connection resource location. Must match logic app location.
+            "location": "[parameters('LogicAppLocation')]",
+            "properties": {
+                "api": {
+                    // Connector ID
+                    "id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', parameters('LogicAppLocation'), 'microsoftforms')]"
+                },
+                // Template parameter reference for connection display name
+                "displayName": "[concat('Connect_', parameters('LogicAppName'), '_to_MicrosoftForms')]"
+            }
+        },
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            // Template parameter reference for connection name
+            "name": "[variables('msftTeamsConnectionName')]",
+            // Template parameter reference for connection resource location. Must match logic app location.
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "api": {
+                    // Connector ID
+                    "id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', parameters('LogicAppLocation'), 'teams')]"
+                },
+                // Template parameter reference for connection display name
+                "displayName": "[concat('Connect_', parameters('LogicAppName'), '_to_MicrosoftTeams')]"
+            }
+        }
+    ],
+    "outputs": {
+    }
+}
