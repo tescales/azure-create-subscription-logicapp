@@ -125,7 +125,7 @@
                                     }
                                 },
                                 "method": "get",
-                                "path": "/formapi/api/forms/@{encodeURIComponent('v4j5cvGGr0GRqy180BHbR4aeDQG97hFLj5ejc5p3JO1URjRXVTFPRldFV01PNEVBWEZWMjc1VU1QNC4u')}/responses",
+                                "path": "/formapi/api/forms('@{encodeURIComponent(parameters('msftFormsId'))}')/responses",
                                 "queries": {
                                     "response_id": "@triggerBody()?['resourceData']?['responseId']"
                                 }
@@ -494,7 +494,7 @@
                                         "name": "@parameters('$connections')['formsConnection']['connectionId']"
                                     }
                                 },
-                                "path": "/formapi/api/forms/@{encodeURIComponent('v4j5cvGGr0GRqy180BHbR4aeDQG97hFLj5ejc5p3JO1URjRXVTFPRldFV01PNEVBWEZWMjc1VU1QNC4u')}/webhooks"
+                                "path": "/formapi/api/forms/@{encodeURIComponent(parameters('msftFormsId'))}/webhooks"
                             },
                             "splitOn": "@triggerBody()?['value']",
                             "type": "ApiConnectionWebhook"
