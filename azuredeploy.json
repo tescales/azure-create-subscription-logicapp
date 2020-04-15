@@ -62,7 +62,6 @@
         "msftFormsId": {
             "type": "string",
             "minLength": 1,
-            "defaultValue": "v4j5cvGGr0GRqy180BHbR4aeDQG97hFLj5ejc5p3JO1URjRXVTFPRldFV01PNEVBWEZWMjc1VU1QNC4u",
             "metadata": {
                 "description": "The ID of the Microsoft Form. Available in the URL of your Forms account."
             }

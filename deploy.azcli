@@ -5,6 +5,7 @@ $logicAppName="lapp-$resourceGroup"
 $location="westus2"
 $teamsRecipient=$(az account show --query user.name --output tsv) #or put your email address if you prefer
 $subscription=$(az account show --query id --output tsv)
+$msftFormsId="v4j5cvGGr0GRqy180BHbR4aeDQG97hFLj5ejc5p3JO1URjRXVTFPRldFV01PNEVBWEZWMjc1VU1QNC4u"
 $formsConnName="$logicAppName-msftforms"
 $teamsConnName="$logicAppName-msftteams"
 
@@ -14,7 +15,7 @@ az configure --defaults group=$resourceGroup
 
 ## Full Deployment
 az group create --name $resourceGroup
-az deployment group create --template-file azuredeploy.json --resource-group $resourceGroup --parameters teamsRecipient=$teamsRecipient LogicAppName=$logicAppName
+az deployment group create --template-file azuredeploy.json --resource-group $resourceGroup --parameters teamsRecipient=$teamsRecipient msftFormsId=$msftFormsId LogicAppName=$logicAppName
 
 ## Authorize the automatically created API Connections
 pwsh -noprofile -file scripts/Authorize-LogicApp.ps1 -ConnectionName $teamsConnName -ResourceGroupName $resourceGroup -ResourceLocation $location -api 'teams' -subscriptionId $subscription
